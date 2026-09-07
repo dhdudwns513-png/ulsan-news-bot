@@ -1,0 +1,53 @@
+name: 울산 동구 뉴스봇
+
+on:
+  schedule:
+    - cron: '30 22 * * *'
+    - cron: '0 0-13 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'briefing 또는 urgent'
+        default: 'briefing'
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - name: 모드 결정
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.schedule }}" = "30 22 * * *" ]; then
+            echo "mode=briefing" >> $GITHUB_OUTPUT
+          else
+            echo "mode=urgent" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 뉴스봇 실행
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python news_bot.py ${{ steps.mode.outputs.mode }}
+
+      - name: 발송 기록 저장
+        run: |
+          git config user.name "news-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "update state [skip ci]"
+          git push
