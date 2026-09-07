@@ -3,15 +3,21 @@ name: 울산 동구 뉴스봇
 on:
   schedule:
     - cron: '30 22 * * *'
-    - cron: '0 0-13 * * *'
+    - cron: '30 9 * * *'
+    - cron: '*/20 22-23,0-13 * * *'
+    - cron: '0 14-21 * * *'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'briefing 또는 urgent'
+        description: 'briefing 또는 check'
         default: 'briefing'
 
 permissions:
   contents: write
+
+concurrency:
+  group: newsbot
+  cancel-in-progress: false
 
 jobs:
   run:
@@ -28,12 +34,13 @@ jobs:
       - name: 모드 결정
         id: mode
         run: |
+          S="${{ github.event.schedule }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event.schedule }}" = "30 22 * * *" ]; then
+          elif [ "$S" = "30 22 * * *" ] || [ "$S" = "30 9 * * *" ]; then
             echo "mode=briefing" >> $GITHUB_OUTPUT
           else
-            echo "mode=urgent" >> $GITHUB_OUTPUT
+            echo "mode=check" >> $GITHUB_OUTPUT
           fi
 
       - name: 뉴스봇 실행
@@ -50,4 +57,5 @@ jobs:
           git config user.email "bot@users.noreply.github.com"
           git add state.json
           git diff --cached --quiet || git commit -m "update state [skip ci]"
+          git pull --rebase || true
           git push
