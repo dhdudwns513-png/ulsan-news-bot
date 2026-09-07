@@ -1,27 +1,23 @@
 {
-  "_설명": "keywords: 아침 브리핑 검색어 / urgent_keywords: 새 기사 나오면 즉시 알림 / exclude: 제목에 포함되면 제외 / rss_feeds: 지역언론 RSS (선택)",
-  "keywords": [
-    "김태선 의원",
-    "울산 동구",
-    "울산 동구청",
-    "HD현대중공업",
-    "HD현대미포",
-    "울산 조선업",
-    "울산 동구의회",
-    "울산시 동구 재개발",
-    "울산 방어진",
-    "울산 일산해수욕장"
+  "_설명": "instant: 새 기사 뜨면 24시간 즉시 / instant_title: 제목에 있을 때만 즉시(밤엔 브리핑으로) / digest: 브리핑에서 보도량 top N만 / exclude: 제목에 있으면 제외",
+  "instant": [
+    "김태선"
   ],
-  "urgent_keywords": [
-    "김태선 의원",
-    "김태선 국회의원"
+  "instant_title": [
+    "울산 동구",
+    "동구청",
+    "동구의회",
+    "HD현대중공업"
+  ],
+  "digest": [
+    "울산"
   ],
   "exclude": [
-    "[부고]",
-    "[인사]",
-    "[포토]"
+    "[부고]", "[인사]", "[포토]", "[사진]", "[날씨]", "부음", "오늘의 운세"
   ],
-  "rss_feeds": [],
-  "briefing_hours": 24,
-  "max_per_keyword": 8
+  "quiet_hours": [23, 7],
+  "check_cap": 5,
+  "briefing_hours": 12,
+  "max_per_keyword": 8,
+  "digest_top": 10
 }

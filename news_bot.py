@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-울산 동구 지역 뉴스 텔레그램 봇
-- 네이버 뉴스 검색 API + (선택) RSS 피드에서 키워드별 기사 수집
-- briefing 모드: 키워드별 묶음 브리핑 발송
-- urgent   모드: 긴급 키워드(의원 이름 등) 신규 기사 즉시 발송
-- state.json 에 이미 보낸 기사 링크를 기록해 중복 발송 방지
+울산 동구 지역 뉴스 텔레그램 봇 v2
+- 3등급 키워드: instant(즉시) / instant_title(제목 포함 시 즉시) / digest(브리핑만, 보도량 top N)
+- check 모드: 20분/1시간마다 신규 기사 확인 → 즉시 등급 발송, 나머지는 브리핑 대기
+- briefing 모드: 아침·저녁 묶음 발송
+- 유사 제목 클러스터링으로 같은 사안 묶기 (대표 1건 + 외 N건)
 """
 import html
 import json
@@ -14,6 +14,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from urllib.parse import quote
 
 import requests
 
@@ -46,20 +47,96 @@ def clean(text):
     return html.unescape(text).strip()
 
 
-def norm_title(title):
-    """중복 판정용 제목 정규화 (기호·공백·언론사 꼬리표 제거)"""
-    t = re.sub(r"\[.*?\]|\(.*?\)|【.*?】", "", title)
-    t = re.sub(r"[^가-힣a-zA-Z0-9]", "", t)
-    return t.lower()
-
-
 def esc(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def tokens(title):
+    """클러스터링용 토큰: 한글 2글자 이상 덩어리·영문·숫자"""
+    t = re.sub(r"\[.*?\]|\(.*?\)|【.*?】|「.*?」", " ", title)
+    toks = re.findall(r"[가-힣]{2,}|[A-Za-z]{2,}|\d{2,}", t)
+    # 한글 덩어리는 앞 2글자 어간도 포함해 조사 변화 흡수
+    out = set()
+    for w in toks:
+        out.add(w)
+        if re.match(r"[가-힣]", w) and len(w) > 2:
+            out.add(w[:2])
+    return out
+
+
+def similar(a, b, th=0.22):
+    ta, tb = tokens(a), tokens(b)
+    if not ta or not tb:
+        return False
+    return len(ta & tb) / len(ta | tb) >= th
+
+
+def cluster(articles):
+    """유사 제목끼리 묶어 [{"lead": art, "others": [art...]}] 반환 (보도량 순)"""
+    groups = []
+    for a in articles:
+        for g in groups:
+            if any(similar(a["title"], x["title"]) for x in [g["lead"]] + g["others"]):
+                g["others"].append(a)
+                break
+        else:
+            groups.append({"lead": a, "others": []})
+    for g in groups:
+        # 대표 기사는 가장 최신 것으로
+        allp = [g["lead"]] + g["others"]
+        allp.sort(key=lambda x: x["pub"], reverse=True)
+        g["lead"], g["others"] = allp[0], allp[1:]
+    groups.sort(key=lambda g: (len(g["others"]), g["lead"]["pub"]), reverse=True)
+    return groups
+
+
+def press_from_url(url):
+    m = re.search(r"https?://(?:www\.|news\.|m\.|v\.)?([^/]+)", url or "")
+    return m.group(1) if m else ""
+
+
 # ---------- 수집 ----------
-def naver_search(query, display=30):
-    """NAVER API HUB (네이버클라우드) 방식 — 키가 있을 때만 동작, 없으면 건너뜀"""
+def rss_fetch(feed):
+    try:
+        import feedparser
+    except ImportError:
+        return []
+    try:
+        d = feedparser.parse(feed["url"], agent="Mozilla/5.0 (news-bot)")
+    except Exception as e:
+        print(f"[rss] {feed['name']}: {e}", file=sys.stderr)
+        return []
+    out = []
+    for e in d.entries[:100]:
+        pub = datetime.now(KST)
+        if getattr(e, "published_parsed", None):
+            pub = datetime.fromtimestamp(time.mktime(e.published_parsed), KST)
+        src = getattr(getattr(e, "source", None), "title", None)
+        out.append({
+            "title": clean(e.get("title", "")),
+            "link": e.get("link", ""),
+            "desc": clean(e.get("summary", "")),
+            "pub": pub,
+            "source": src or feed["name"],
+        })
+    return out
+
+
+def google_news_search(query):
+    url = f"https://news.google.com/rss/search?q={quote(query)}&hl=ko&gl=KR&ceid=KR:ko"
+    arts = rss_fetch({"name": "", "url": url})
+    for a in arts:
+        if " - " in a["title"]:
+            t, _, press = a["title"].rpartition(" - ")
+            a["title"] = t.strip()
+            if not a["source"] or "." in a["source"]:
+                a["source"] = press.strip()
+        if not a["source"]:
+            a["source"] = press_from_url(a["link"])
+    return arts
+
+
+def naver_search(query, display=50):
     if not (NAVER_ID and NAVER_SECRET):
         return []
     try:
@@ -80,92 +157,29 @@ def naver_search(query, display=30):
         except Exception:
             pub = datetime.now(KST)
         link = it.get("originallink") or it.get("link")
-        out.append({
-            "title": clean(it["title"]),
-            "link": link,
-            "desc": clean(it.get("description", "")),
-            "pub": pub,
-            "source": press_from_url(link),
-        })
+        out.append({"title": clean(it["title"]), "link": link,
+                    "desc": clean(it.get("description", "")),
+                    "pub": pub, "source": press_from_url(link)})
     return out
 
 
-def google_news_search(query):
-    """구글 뉴스 검색 RSS — 키 불필요, 기본 수집원"""
-    from urllib.parse import quote
-    url = f"https://news.google.com/rss/search?q={quote(query)}&hl=ko&gl=KR&ceid=KR:ko"
-    feed = {"name": "google", "url": url}
-    arts = rss_fetch(feed)
+def fetch_keyword(kw, since, cfg, sent, title_only=False):
+    arts = google_news_search(kw) + naver_search(kw)
+    picked, seen = [], set()
+    kws = kw.replace(" ", "")
     for a in arts:
-        # 구글뉴스 제목은 "기사제목 - 언론사" 형태
-        if " - " in a["title"]:
-            t, _, press = a["title"].rpartition(" - ")
-            a["title"], a["source"] = t.strip(), press.strip()
-    return arts
-
-
-def press_from_url(url):
-    m = re.search(r"https?://(?:www\.|news\.|m\.)?([^/]+)", url or "")
-    return m.group(1) if m else ""
-
-
-def rss_fetch(feed):
-    """feed: {"name": "...", "url": "..."}"""
-    try:
-        import feedparser
-    except ImportError:
-        return []
-    try:
-        d = feedparser.parse(feed["url"], agent="Mozilla/5.0 (news-bot)")
-    except Exception as e:
-        print(f"[rss] {feed['name']}: {e}", file=sys.stderr)
-        return []
-    out = []
-    for e in d.entries[:50]:
-        pub = datetime.now(KST)
-        if getattr(e, "published_parsed", None):
-            pub = datetime.fromtimestamp(time.mktime(e.published_parsed), KST)
-        out.append({
-            "title": clean(e.get("title", "")),
-            "link": e.get("link", ""),
-            "desc": clean(e.get("summary", "")),
-            "pub": pub,
-            "source": getattr(getattr(e, "source", None), "title", None) or feed["name"],
-        })
-    return out
-
-
-def matches(article, keyword):
-    hay = (article["title"] + " " + article["desc"]).replace(" ", "")
-    return keyword.replace(" ", "") in hay
-
-
-def collect(cfg, since):
-    """키워드별 신규 기사 dict 반환 {keyword: [article,...]}"""
-    result = {}
-    seen_titles = set()
-    keywords = cfg["keywords"]
-    rss_articles = []
-    for feed in cfg.get("rss_feeds", []):
-        rss_articles += rss_fetch(feed)
-
-    for kw in keywords:
-        arts = google_news_search(kw) + naver_search(kw)
-        arts += [a for a in rss_articles if matches(a, kw)]
-        picked = []
-        for a in arts:
-            if a["pub"] < since:
-                continue
-            if any(x in a["title"] for x in cfg.get("exclude", [])):
-                continue
-            nt = norm_title(a["title"])
-            if not nt or nt in seen_titles:
-                continue
-            seen_titles.add(nt)
-            picked.append(a)
-        picked.sort(key=lambda x: x["pub"], reverse=True)
-        result[kw] = picked
-    return result
+        if a["pub"] < since or a["link"] in sent:
+            continue
+        if any(x in a["title"] for x in cfg.get("exclude", [])):
+            continue
+        hay = a["title"].replace(" ", "") if title_only else (a["title"] + a["desc"]).replace(" ", "")
+        if kws not in hay:
+            continue
+        if a["link"] in seen:
+            continue
+        seen.add(a["link"])
+        picked.append(a)
+    return picked
 
 
 # ---------- 텔레그램 ----------
@@ -173,7 +187,6 @@ def tg_send(text):
     if not (TG_TOKEN and TG_CHAT):
         print("[tg] 토큰/채팅ID 없음 — 출력만 합니다\n" + text)
         return
-    # 4096자 제한 → 줄 단위로 분할
     chunks, cur = [], ""
     for line in text.split("\n"):
         if len(cur) + len(line) + 1 > 3900:
@@ -194,69 +207,126 @@ def tg_send(text):
         time.sleep(0.5)
 
 
-def fmt_article(a):
+def fmt_group(g):
+    a = g["lead"]
     t = a["pub"].strftime("%m/%d %H:%M")
-    return f'• <a href="{a["link"]}">{esc(a["title"])}</a>\n   <i>{esc(a["source"])} · {t}</i>'
+    line = f'• <a href="{a["link"]}">{esc(a["title"])}</a>\n   <i>{esc(a["source"])} · {t}'
+    if g["others"]:
+        line += f" · 외 {len(g['others'])}건"
+    line += "</i>"
+    return line
+
+
+def is_quiet(cfg):
+    h = datetime.now(KST).hour
+    qs, qe = cfg.get("quiet_hours", [23, 7])
+    return h >= qs or h < qe
 
 
 # ---------- 모드 ----------
-def run_briefing(cfg, state):
-    hours = cfg.get("briefing_hours", 24)
-    since = datetime.now(KST) - timedelta(hours=hours)
-    data = collect(cfg, since)
+def run_check(cfg, state):
+    """즉시 등급 확인. 밤에는 instant만."""
     sent = set(state.get("sent", []))
-    limit = cfg.get("max_per_keyword", 8)
+    since = datetime.now(KST) - timedelta(hours=6)
+    quiet = is_quiet(cfg)
+    cap = cfg.get("check_cap", 5)
+    msgs = []
+    pending = state.get("pending", [])
 
-    today = datetime.now(KST).strftime("%Y.%m.%d (%a)")
-    lines = [f"📰 <b>울산 동구 뉴스 브리핑</b>  {today}", ""]
-    total = 0
-    for kw, arts in data.items():
-        new = [a for a in arts if a["link"] not in sent][:limit]
-        if not new:
-            continue
-        lines.append(f"<b>▎{esc(kw)}</b>")
-        for a in new:
-            lines.append(fmt_article(a))
-            sent.add(a["link"])
-            total += 1
-        lines.append("")
-    if total == 0:
-        lines.append("최근 신규 기사가 없습니다.")
-    tg_send("\n".join(lines))
-    state["sent"] = list(sent)[-3000:]
+    for kw in cfg.get("instant", []):
+        for g in cluster(fetch_keyword(kw, since, cfg, sent)):
+            msgs.append(f"🔴 <b>[{esc(kw)}]</b>\n{fmt_group(g)}")
+            for a in [g["lead"]] + g["others"]:
+                sent.add(a["link"])
+
+    n = 0
+    for kw in cfg.get("instant_title", []):
+        for g in cluster(fetch_keyword(kw, since, cfg, sent, title_only=True)):
+            allp = [g["lead"]] + g["others"]
+            if quiet or n >= cap:
+                # 브리핑으로 넘김
+                for a in allp:
+                    if a["link"] not in sent:
+                        pending.append({**a, "pub": a["pub"].isoformat(), "kw": kw})
+                        sent.add(a["link"])
+                continue
+            msgs.append(f"🟡 <b>[{esc(kw)}]</b>\n{fmt_group(g)}")
+            for a in allp:
+                sent.add(a["link"])
+            n += 1
+
+    if msgs:
+        tg_send("\n\n".join(msgs))
+    state["sent"] = list(sent)[-5000:]
+    state["pending"] = pending[-200:]
     return state
 
 
-def run_urgent(cfg, state):
-    urgent_kw = cfg.get("urgent_keywords", [])
-    if not urgent_kw:
-        return state
-    since = datetime.now(KST) - timedelta(hours=6)
-    sub = dict(cfg)
-    sub["keywords"] = urgent_kw
-    data = collect(sub, since)
+def run_briefing(cfg, state):
     sent = set(state.get("sent", []))
-    lines = []
-    for kw, arts in data.items():
-        for a in arts:
-            if a["link"] in sent:
-                continue
-            lines.append(f"🔔 <b>[{esc(kw)}]</b> 신규 기사\n{fmt_article(a)}")
-            sent.add(a["link"])
-    if lines:
-        tg_send("\n\n".join(lines))
-    state["sent"] = list(sent)[-3000:]
+    hours = cfg.get("briefing_hours", 12)
+    since = datetime.now(KST) - timedelta(hours=hours)
+    now = datetime.now(KST)
+    label = "아침" if now.hour < 12 else "저녁"
+    lines = [f"📰 <b>울산 동구 {label} 브리핑</b>  {now.strftime('%m/%d (%a) %H:%M')}", ""]
+    total = 0
+
+    # 1) 즉시 등급에서 브리핑으로 넘어온 것 (밤사이·상한 초과분)
+    pending = state.get("pending", [])
+    if pending:
+        by_kw = {}
+        for p in pending:
+            a = dict(p)
+            a["pub"] = datetime.fromisoformat(a["pub"])
+            by_kw.setdefault(a.pop("kw"), []).append(a)
+        for kw, arts in by_kw.items():
+            lines.append(f"<b>▎{esc(kw)}</b> <i>(모아둔 기사)</i>")
+            for g in cluster(arts)[:cfg.get("max_per_keyword", 8)]:
+                lines.append(fmt_group(g))
+                total += 1
+            lines.append("")
+        state["pending"] = []
+
+    # 2) 즉시 등급 키워드의 본문 언급 기사 (제목엔 없어서 즉시 못 간 것)
+    for kw in cfg.get("instant_title", []):
+        arts = fetch_keyword(kw, since, cfg, sent)
+        groups = cluster(arts)[:cfg.get("max_per_keyword", 8)]
+        if not groups:
+            continue
+        lines.append(f"<b>▎{esc(kw)}</b>")
+        for g in groups:
+            lines.append(fmt_group(g))
+            for a in [g["lead"]] + g["others"]:
+                sent.add(a["link"])
+            total += 1
+        lines.append("")
+
+    # 3) digest 키워드: 보도량 top N
+    for kw in cfg.get("digest", []):
+        arts = fetch_keyword(kw, since, cfg, sent)
+        groups = cluster(arts)[:cfg.get("digest_top", 10)]
+        if not groups:
+            continue
+        lines.append(f"<b>▎{esc(kw)} 주요 뉴스 TOP {len(groups)}</b> <i>(보도량 순)</i>")
+        for i, g in enumerate(groups, 1):
+            lines.append(f"{i}. " + fmt_group(g)[2:])
+            for a in [g["lead"]] + g["others"]:
+                sent.add(a["link"])
+            total += 1
+        lines.append("")
+
+    if total == 0:
+        lines.append("신규 기사가 없습니다.")
+    tg_send("\n".join(lines))
+    state["sent"] = list(sent)[-5000:]
     return state
 
 
 def main():
-    mode = (sys.argv[1] if len(sys.argv) > 1 else "briefing").strip()
-    cfg = load_json(CONFIG_PATH, {"keywords": []})
-    state = load_json(STATE_PATH, {"sent": []})
-    if mode == "urgent":
-        state = run_urgent(cfg, state)
-    else:
-        state = run_briefing(cfg, state)
+    mode = (sys.argv[1] if len(sys.argv) > 1 else "check").strip()
+    cfg = load_json(CONFIG_PATH, {})
+    state = load_json(STATE_PATH, {"sent": [], "pending": []})
+    state = run_briefing(cfg, state) if mode == "briefing" else run_check(cfg, state)
     save_json(STATE_PATH, state)
 
 
