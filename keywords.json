@@ -1,5 +1,5 @@
 {
-  "_설명": "instant: 즉시 / instant_title: 제목에 있을 때만 즉시 / digest: 브리핑 보도량 top N / breaking_watch: 속보·단독 표지 붙으면 등급·시간 무시하고 개별 즉시 / region_block: 이 단어 들어가면 제외(울산 함께 언급되면 통과)",
+  "_설명": "instant: 묶지 않고 기사마다 개별 즉시 / instant_title: 제목에 있을 때만 즉시 / digest: 브리핑 보도량 top N / breaking_watch: 속보·단독은 등급·시간 무시 개별 즉시 / region_block: 타지역 동구 제외 / market_words: 증권성 기사는 즉시 알림 대신 브리핑으로",
   "instant": [
     "김태선"
   ],
@@ -48,5 +48,30 @@
   "briefing_hours": 12,
   "max_per_keyword": 8,
   "digest_top": 10,
-  "heartbeat": true
+  "heartbeat": false,
+  "market_words": [
+    "주가",
+    "지분",
+    "주식등 보유",
+    "보유 비율",
+    "수급",
+    "코스피",
+    "코스닥",
+    "목표주가",
+    "증권",
+    "시황",
+    "약세",
+    "강세",
+    "상한가",
+    "하한가",
+    "기업주식정보",
+    "투자의견",
+    "순매수",
+    "순매도",
+    "시가총액",
+    "공매도",
+    "배당",
+    "실적 전망",
+    "주주"
+  ]
 }

@@ -99,6 +99,12 @@ def is_breaking(article):
     return bool(BREAKING_RE.search(head))
 
 
+def is_market(article, cfg):
+    """주가·지분·수급 등 증권성 기사 판별"""
+    text = article["title"] + " " + article.get("desc", "")
+    return any(w in text for w in cfg.get("market_words", []))
+
+
 def region_ok(article, cfg):
     """타지역 동명 지역(대전 동구, 대구 동구 등) 기사 배제"""
     text = article["title"] + " " + article.get("desc", "")
@@ -267,17 +273,28 @@ def run_check(cfg, state):
                         f'   <i>{esc(a["source"])} · {t}</i>')
             sent.add(a["link"])
 
-    # 1) 🔴 즉시 등급
+    # 1) 🔴 즉시 등급 — 묶지 않고 기사 하나하나 개별 발송
     for kw in cfg.get("instant", []):
-        for g in cluster(fetch_keyword(kw, since, cfg, sent)):
-            msgs.append(f"🔴 <b>[{esc(kw)}]</b>\n{fmt_group(g)}")
-            for a in [g["lead"]] + g["others"]:
-                sent.add(a["link"])
+        arts = fetch_keyword(kw, since, cfg, sent)
+        arts.sort(key=lambda x: x["pub"])
+        for a in arts:
+            t = a["pub"].strftime("%m/%d %H:%M")
+            msgs.append(f'🔴 <b>[{esc(kw)}]</b>\n'
+                        f'<a href="{a["link"]}">{esc(a["title"])}</a>\n'
+                        f'   <i>{esc(a["source"])} · {t}</i>')
+            sent.add(a["link"])
 
     # 2) 🟡 제목 포함 시 즉시
     n = 0
     for kw in cfg.get("instant_title", []):
-        for g in cluster(fetch_keyword(kw, since, cfg, sent, title_only=True)):
+        found = fetch_keyword(kw, since, cfg, sent, title_only=True)
+        # 증권성 기사는 즉시 알림 대신 브리핑으로
+        market = [a for a in found if is_market(a, cfg)]
+        found = [a for a in found if not is_market(a, cfg)]
+        for a in market:
+            pending.append({**a, "pub": a["pub"].isoformat(), "kw": kw})
+            sent.add(a["link"])
+        for g in cluster(found):
             allp = [g["lead"]] + g["others"]
             if quiet or n >= cap:
                 for a in allp:
