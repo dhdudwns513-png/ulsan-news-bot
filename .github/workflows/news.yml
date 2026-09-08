@@ -2,8 +2,8 @@ name: 울산 동구 뉴스봇
 
 on:
   schedule:
-    - cron: '5,25,45 * * * *'
-    - cron: '30 22 * * *'
+    - cron: '15 * * * *'
+    - cron: '0 23 * * *'
     - cron: '30 9 * * *'
   workflow_dispatch:
     inputs:
@@ -36,7 +36,7 @@ jobs:
           S="${{ github.event.schedule }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
-          elif [ "$S" = "30 22 * * *" ] || [ "$S" = "30 9 * * *" ]; then
+          elif [ "$S" = "0 23 * * *" ] || [ "$S" = "30 9 * * *" ]; then
             echo "mode=briefing" >> $GITHUB_OUTPUT
           else
             echo "mode=check" >> $GITHUB_OUTPUT
