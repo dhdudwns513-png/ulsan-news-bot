@@ -48,5 +48,5 @@
   "briefing_hours": 12,
   "max_per_keyword": 8,
   "digest_top": 10,
-  "heartbeat": false
+  "heartbeat": true
 }
