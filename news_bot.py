@@ -292,8 +292,12 @@ def run_check(cfg, state):
 
     if msgs:
         tg_send("\n\n".join(msgs))
+    elif cfg.get("heartbeat"):
+        now = datetime.now(KST).strftime("%H:%M")
+        tg_send(f"✅ <i>{now} 확인 완료 — 신규 0건</i>")
     state["sent"] = list(sent)[-5000:]
     state["pending"] = pending[-200:]
+    state["last_check"] = datetime.now(KST).isoformat()
     return state
 
 
@@ -303,7 +307,11 @@ def run_briefing(cfg, state):
     since = datetime.now(KST) - timedelta(hours=hours)
     now = datetime.now(KST)
     label = "아침" if now.hour < 12 else "저녁"
-    lines = [f"📰 <b>울산 동구 {label} 브리핑</b>  {now.strftime('%m/%d (%a) %H:%M')}", ""]
+    lines = [f"📰 <b>울산 동구 {label} 브리핑</b>  {now.strftime('%m/%d (%a) %H:%M')}"]
+    lc = state.get("last_check")
+    if lc:
+        lines.append(f"<i>마지막 확인 {datetime.fromisoformat(lc).strftime('%m/%d %H:%M')}</i>")
+    lines.append("")
     total = 0
 
     # 1) 즉시 등급에서 브리핑으로 넘어온 것 (밤사이·상한 초과분)
