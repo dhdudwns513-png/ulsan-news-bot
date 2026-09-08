@@ -90,6 +90,27 @@ def cluster(articles):
     return groups
 
 
+BREAKING_RE = re.compile(r"[\[\(<【]\s*(속보|단독|긴급|1보|특종)\s*[\]\)>】]|^\s*(속보|단독|긴급|1보|특종)\s*[\]\)>】:：\-–]")
+
+
+def is_breaking(article):
+    """제목에 속보/단독 등 표지가 있는지"""
+    head = article["title"][:30]
+    return bool(BREAKING_RE.search(head))
+
+
+def region_ok(article, cfg):
+    """타지역 동명 지역(대전 동구, 대구 동구 등) 기사 배제"""
+    text = article["title"] + " " + article.get("desc", "")
+    for bad in cfg.get("region_block", []):
+        if bad in text:
+            # 울산이 함께 언급되면 통과 (예: 울산·대전 비교기사)
+            if "울산" in text:
+                continue
+            return False
+    return True
+
+
 def press_from_url(url):
     m = re.search(r"https?://(?:www\.|news\.|m\.|v\.)?([^/]+)", url or "")
     return m.group(1) if m else ""
@@ -172,6 +193,8 @@ def fetch_keyword(kw, since, cfg, sent, title_only=False):
             continue
         if any(x in a["title"] for x in cfg.get("exclude", [])):
             continue
+        if not region_ok(a, cfg):
+            continue
         hay = a["title"].replace(" ", "") if title_only else (a["title"] + a["desc"]).replace(" ", "")
         if kws not in hay:
             continue
@@ -225,7 +248,7 @@ def is_quiet(cfg):
 
 # ---------- 모드 ----------
 def run_check(cfg, state):
-    """즉시 등급 확인. 밤에는 instant만."""
+    """즉시 등급 확인. 속보/단독은 등급·시간·상한 무시하고 개별 발송."""
     sent = set(state.get("sent", []))
     since = datetime.now(KST) - timedelta(hours=6)
     quiet = is_quiet(cfg)
@@ -233,18 +256,30 @@ def run_check(cfg, state):
     msgs = []
     pending = state.get("pending", [])
 
+    # 0) 속보·단독 우선 처리 (전 등급 대상, 개별 발송)
+    for kw in cfg.get("breaking_watch", []):
+        for a in fetch_keyword(kw, since, cfg, sent):
+            if not is_breaking(a):
+                continue
+            t = a["pub"].strftime("%m/%d %H:%M")
+            msgs.append(f'🚨 <b>[{esc(kw)} · 속보]</b>\n'
+                        f'<a href="{a["link"]}">{esc(a["title"])}</a>\n'
+                        f'   <i>{esc(a["source"])} · {t}</i>')
+            sent.add(a["link"])
+
+    # 1) 🔴 즉시 등급
     for kw in cfg.get("instant", []):
         for g in cluster(fetch_keyword(kw, since, cfg, sent)):
             msgs.append(f"🔴 <b>[{esc(kw)}]</b>\n{fmt_group(g)}")
             for a in [g["lead"]] + g["others"]:
                 sent.add(a["link"])
 
+    # 2) 🟡 제목 포함 시 즉시
     n = 0
     for kw in cfg.get("instant_title", []):
         for g in cluster(fetch_keyword(kw, since, cfg, sent, title_only=True)):
             allp = [g["lead"]] + g["others"]
             if quiet or n >= cap:
-                # 브리핑으로 넘김
                 for a in allp:
                     if a["link"] not in sent:
                         pending.append({**a, "pub": a["pub"].isoformat(), "kw": kw})
