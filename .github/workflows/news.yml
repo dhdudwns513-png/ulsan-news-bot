@@ -2,7 +2,6 @@ name: 울산 동구 뉴스봇
 
 on:
   schedule:
-    - cron: '15 * * * *'
     - cron: '0 23 * * *'
     - cron: '30 9 * * *'
   workflow_dispatch:
