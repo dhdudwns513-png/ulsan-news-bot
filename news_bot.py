@@ -106,15 +106,20 @@ def is_market(article, cfg):
 
 
 def region_ok(article, cfg):
-    """타지역 동명 지역(대전 동구, 대구 동구 등) 기사 배제"""
+    """타지역 기사 배제 — 울산이 함께 언급되면 통과"""
     text = article["title"] + " " + article.get("desc", "")
-    for bad in cfg.get("region_block", []):
-        if bad in text:
-            # 울산이 함께 언급되면 통과 (예: 울산·대전 비교기사)
-            if "울산" in text:
-                continue
-            return False
-    return True
+    if "울산" in text:
+        return True
+    return not any(bad in text for bad in cfg.get("region_block", []))
+
+
+def require_ok(article, cfg, kw):
+    """키워드별 필수 동반어 검사 (예: '동구청'은 '울산'이 함께 있어야 함)"""
+    need = cfg.get("keyword_require", {}).get(kw, [])
+    if not need:
+        return True
+    text = (article["title"] + " " + article.get("desc", "")).replace(" ", "")
+    return all(w.replace(" ", "") in text for w in need)
 
 
 def press_from_url(url):
@@ -191,7 +196,11 @@ def naver_search(query, display=50):
 
 
 def fetch_keyword(kw, since, cfg, sent, title_only=False):
-    arts = google_news_search(kw) + naver_search(kw)
+    arts = []
+    if cfg.get("use_google", True):
+        arts += google_news_search(kw)
+    if cfg.get("use_naver", True):
+        arts += naver_search(kw)
     picked, seen = [], set()
     kws = kw.replace(" ", "")
     for a in arts:
@@ -200,6 +209,8 @@ def fetch_keyword(kw, since, cfg, sent, title_only=False):
         if any(x in a["title"] for x in cfg.get("exclude", [])):
             continue
         if not region_ok(a, cfg):
+            continue
+        if not require_ok(a, cfg, kw):
             continue
         hay = a["title"].replace(" ", "") if title_only else (a["title"] + a["desc"]).replace(" ", "")
         if kws not in hay:
@@ -289,11 +300,10 @@ def run_check(cfg, state):
     for kw in cfg.get("instant_title", []):
         found = fetch_keyword(kw, since, cfg, sent, title_only=True)
         # 증권성 기사는 즉시 알림 대신 브리핑으로
-        market = [a for a in found if is_market(a, cfg)]
-        found = [a for a in found if not is_market(a, cfg)]
-        for a in market:
-            pending.append({**a, "pub": a["pub"].isoformat(), "kw": kw})
+        # 증권성 기사는 알림·브리핑 모두에서 제외
+        for a in [x for x in found if is_market(x, cfg)]:
             sent.add(a["link"])
+        found = [a for a in found if not is_market(a, cfg)]
         for g in cluster(found):
             allp = [g["lead"]] + g["others"]
             if quiet or n >= cap:
@@ -349,7 +359,7 @@ def run_briefing(cfg, state):
 
     # 2) 즉시 등급 키워드의 본문 언급 기사 (제목엔 없어서 즉시 못 간 것)
     for kw in cfg.get("instant_title", []):
-        arts = fetch_keyword(kw, since, cfg, sent)
+        arts = [a for a in fetch_keyword(kw, since, cfg, sent) if not is_market(a, cfg)]
         groups = cluster(arts)[:cfg.get("max_per_keyword", 8)]
         if not groups:
             continue
@@ -363,7 +373,7 @@ def run_briefing(cfg, state):
 
     # 3) digest 키워드: 보도량 top N
     for kw in cfg.get("digest", []):
-        arts = fetch_keyword(kw, since, cfg, sent)
+        arts = [a for a in fetch_keyword(kw, since, cfg, sent) if not is_market(a, cfg)]
         groups = cluster(arts)[:cfg.get("digest_top", 10)]
         if not groups:
             continue
