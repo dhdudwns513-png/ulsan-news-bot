@@ -373,7 +373,9 @@ def run_briefing(cfg, state):
 
     # 3) digest 키워드: 보도량 top N
     for kw in cfg.get("digest", []):
-        arts = [a for a in fetch_keyword(kw, since, cfg, sent) if not is_market(a, cfg)]
+        title_only = cfg.get("digest_title_only", True)
+        arts = [a for a in fetch_keyword(kw, since, cfg, sent, title_only=title_only)
+                if not is_market(a, cfg)]
         groups = cluster(arts)[:cfg.get("digest_top", 10)]
         if not groups:
             continue

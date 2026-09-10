@@ -27,6 +27,7 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 
 ROW_RE = re.compile(r"<tr[^>]*>(.*?)</tr>", re.S | re.I)
 LINK_RE = re.compile(r'href="([^"]*selectBoardArticle\.do[^"]*)"[^>]*>(.*?)</a>', re.S | re.I)
+NUM_ONLY_RE = re.compile(r"^[\d\s,]*$")
 DATE_RE = re.compile(r"(20\d{2})[-.](\d{1,2})[-.](\d{1,2})(?!\d)")
 TAG_RE = re.compile(r"<[^>]+>")
 
@@ -63,23 +64,46 @@ def abs_url(base, href):
     return root + (href if href.startswith("/") else "/" + href)
 
 
+def pick_title(row):
+    """행 안의 여러 링크 중 실제 제목 앵커 선택 (번호 칸 링크 배제)"""
+    best = None
+    for href, raw in LINK_RE.findall(row):
+        t = clean(raw)
+        t = re.sub(r"^(새글|NEW|new|신규)\s*", "", t).strip()
+        if not t or NUM_ONLY_RE.match(t):
+            continue
+        if best is None or len(t) > len(best[1]):
+            best = (href, t)
+    return best
+
+
+def fetch_html(url, tries=3):
+    last = None
+    for i in range(tries):
+        try:
+            r = requests.get(url, headers=UA, timeout=30)
+            r.raise_for_status()
+            r.encoding = r.apparent_encoding or "utf-8"
+            return r.text
+        except Exception as e:
+            last = e
+            time.sleep(3 * (i + 1))
+    print(f"[board] {url}: {last}", file=sys.stderr)
+    return None
+
+
 def parse_board(url):
     """표준 게시판 목록에서 [{id, title, url, date}] 추출"""
-    try:
-        r = requests.get(url, headers=UA, timeout=20)
-        r.raise_for_status()
-        r.encoding = r.apparent_encoding or "utf-8"
-    except Exception as e:
-        print(f"[board] {url}: {e}", file=sys.stderr)
+    text = fetch_html(url)
+    if text is None:
         return []
     items = []
-    for row in ROW_RE.findall(r.text):
-        m = LINK_RE.search(row)
-        if not m:
+    for row in ROW_RE.findall(text):
+        picked = pick_title(row)
+        if not picked:
             continue
-        href, raw_title = m.group(1), m.group(2)
-        title = clean(raw_title)
-        if not title or len(title) < 2:
+        href, title = picked
+        if len(title) < 3:
             continue
         link = abs_url(url, href)
         nid = re.search(r"nttId=(\d+)", link)
