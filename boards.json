@@ -1,0 +1,18 @@
+{
+  "_설명": "boards: 감시할 게시판 목록 / max_age_days: 며칠 이내 글만 발송 / first_run_limit: 최초 실행 시 최대 발송 건수 / exclude: 제목에 있으면 제외",
+  "boards": [
+    {
+      "name": "donggu_notice",
+      "label": "동구청 알림사항",
+      "url": "https://donggu.ulsan.kr/cop/bbs/selectBoardList.do?bbsId=BBSMSTR_000000000323"
+    },
+    {
+      "name": "donggu_press",
+      "label": "동구청 보도자료",
+      "url": "https://donggu.ulsan.kr/cop/bbs/selectBoardList.do?bbsId=BBSMSTR_000000000322"
+    }
+  ],
+  "max_age_days": 3,
+  "first_run_limit": 3,
+  "exclude": []
+}
