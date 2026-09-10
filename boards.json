@@ -1,5 +1,5 @@
 {
-  "_설명": "boards: 감시할 게시판 목록 / max_age_days: 며칠 이내 글만 발송 / first_run_limit: 최초 실행 시 최대 발송 건수 / exclude: 제목에 있으면 제외",
+  "_설명": "boards: 감시할 게시판 (type 생략=표준게시판, 'eminwon'=새올 고시공고, 'generic'=범용 표 목록) / max_age_days / first_run_limit / exclude",
   "boards": [
     {
       "name": "donggu_notice",
@@ -10,6 +10,31 @@
       "name": "donggu_press",
       "label": "동구청 보도자료",
       "url": "https://donggu.ulsan.kr/cop/bbs/selectBoardList.do?bbsId=BBSMSTR_000000000322"
+    },
+    {
+      "name": "donggu_gosi",
+      "label": "동구청 고시공고",
+      "type": "eminwon",
+      "url": "https://eminwon.donggu.ulsan.kr/emwp/jsp/ofr/OfrNotAncmtLSub.jsp?not_ancmt_se_code=01,03,04,05&list_gubun=A",
+      "detail_url": "https://eminwon.donggu.ulsan.kr/emwp/gov/mogaha/ntis/web/ofr/action/OfrAction.do?jndinm=OfrNotAncmtEJB&context=NTIS&method=selectOfrNotAncmt&methodnm=selectOfrNotAncmtRegst&not_ancmt_mgt_no={id}&homepage_pbs_yn=Y&subCheck=Y&ofr_pageSize=10"
+    },
+    {
+      "name": "ulsan_news",
+      "label": "울산시 울산소식",
+      "type": "generic",
+      "url": "https://www.ulsan.go.kr/u/rep/bbs/list.ulsan?bbsId=BBS_0000000000000003&mId=001004001001000000"
+    },
+    {
+      "name": "ulsan_press",
+      "label": "울산시 보도자료",
+      "type": "generic",
+      "url": "https://www.ulsan.go.kr/u/rep/contents.ulsan?mId=001004003001000000"
+    },
+    {
+      "name": "ulsan_gosi",
+      "label": "울산시 고시공고",
+      "type": "generic",
+      "url": "https://www.ulsan.go.kr/u/rep/contents.ulsan?mId=001004002000000000"
     }
   ],
   "max_age_days": 3,

@@ -115,6 +115,74 @@ def parse_board(url):
     return items
 
 
+EMW_ID_RE = re.compile(r"not_ancmt_mgt_no=(\d+)|goView\D{0,10}(\d+)|fn_view\D{0,10}(\d+)")
+EMW_A_RE = re.compile(r"<a\s[^>]*>(.*?)</a>", re.S | re.I)
+
+
+def parse_eminwon(board):
+    """새올(eminwon) 고시공고 목록 파서"""
+    text = fetch_html(board["url"])
+    if text is None:
+        return []
+    tmpl = board.get("detail_url", "")
+    items = []
+    for row in ROW_RE.findall(text):
+        m = EMW_ID_RE.search(row)
+        if not m:
+            continue
+        nid = m.group(1) or m.group(2) or m.group(3)
+        titles = [clean(t) for t in EMW_A_RE.findall(row)]
+        titles = [t for t in titles
+                  if t and not NUM_ONLY_RE.match(t) and t not in ("목록", "상세보기", "다운로드")]
+        if not titles:
+            continue
+        title = max(titles, key=len)
+        if len(title) < 3:
+            continue
+        d = DATE_RE.search(clean(row))
+        date = f"{d.group(1)}-{int(d.group(2)):02d}-{int(d.group(3)):02d}" if d else ""
+        items.append({"id": nid, "title": title,
+                      "url": tmpl.replace("{id}", nid) if tmpl else board["url"],
+                      "date": date})
+    return items
+
+
+ANY_A_RE = re.compile(r'<a\s[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.S | re.I)
+ID_IN_HREF_RE = re.compile(r"(?:dataId|dataSid|nttId|not_ancmt_mgt_no|seq|idx|articleNo)=(\d+)")
+
+
+def parse_generic(board):
+    """행 단위로 가장 긴 앵커를 제목으로 삼는 범용 목록 파서"""
+    url = board["url"]
+    text = fetch_html(url)
+    if text is None:
+        return []
+    skip = ("목록", "상세보기", "다운로드", "미리보기", "이전", "다음", "처음", "마지막", "검색")
+    items, used = [], set()
+    for row in ROW_RE.findall(text):
+        best = None
+        for href, raw in ANY_A_RE.findall(row):
+            t = re.sub(r"^(새글|NEW|new|신규)\s*", "", clean(raw)).strip()
+            t = re.sub(r"\s*(새글|NEW)$", "", t).strip()
+            if not t or NUM_ONLY_RE.match(t) or t in skip:
+                continue
+            if best is None or len(t) > len(best[1]):
+                best = (href, t)
+        if not best or len(best[1]) < 5:
+            continue
+        href, title = best
+        m = ID_IN_HREF_RE.search(html.unescape(href))
+        nid = m.group(1) if m else str(abs(hash(title)) % 10**12)
+        if nid in used:
+            continue
+        used.add(nid)
+        link = abs_url(url, href) if href.lower().startswith(("http", "/")) else url
+        d = DATE_RE.search(clean(row))
+        date = f"{d.group(1)}-{int(d.group(2)):02d}-{int(d.group(3)):02d}" if d else ""
+        items.append({"id": nid, "title": title, "url": link, "date": date})
+    return items
+
+
 def tg_send(text):
     if not (TG_TOKEN and TG_CHAT):
         print("[tg] 토큰/채팅ID 없음 — 출력만 합니다\n" + text)
@@ -142,7 +210,13 @@ def main():
         key = b["name"]
         seen = set(state.get(key, []))
         first_run = not seen
-        items = parse_board(b["url"])
+        btype = b.get("type", "cop")
+        if btype == "eminwon":
+            items = parse_eminwon(b)
+        elif btype == "generic":
+            items = parse_generic(b)
+        else:
+            items = parse_board(b["url"])
         if not items:
             continue
         fresh = []
