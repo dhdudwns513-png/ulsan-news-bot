@@ -155,7 +155,16 @@
     ],
     "이은주 의원": [
       "울산"
+    ],
+    "HD현대중공업": [
+      "중공업"
     ]
   },
-  "digest_title_only": true
+  "digest_title_only": true,
+  "briefing_title_only": [
+    "HD현대중공업",
+    "울산 동구",
+    "동구청",
+    "동구의회"
+  ]
 }

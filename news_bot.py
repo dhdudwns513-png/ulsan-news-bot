@@ -359,7 +359,10 @@ def run_briefing(cfg, state):
 
     # 2) 즉시 등급 키워드의 본문 언급 기사 (제목엔 없어서 즉시 못 간 것)
     for kw in cfg.get("instant_title", []):
-        arts = [a for a in fetch_keyword(kw, since, cfg, sent) if not is_market(a, cfg)]
+        # 일부 키워드는 브리핑에서도 제목 매치만 인정 (본문 스침 방지)
+        t_only = kw in cfg.get("briefing_title_only", [])
+        arts = [a for a in fetch_keyword(kw, since, cfg, sent, title_only=t_only)
+                if not is_market(a, cfg)]
         groups = cluster(arts)[:cfg.get("max_per_keyword", 8)]
         if not groups:
             continue
