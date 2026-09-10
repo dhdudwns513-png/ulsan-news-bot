@@ -4,6 +4,7 @@
 - boards.json 에 정의된 게시판을 읽어 새 글을 텔레그램으로 발송
 - notice_state.json 에 이미 보낸 글 ID를 기록해 중복 방지
 """
+import hashlib
 import html
 import json
 import os
@@ -81,6 +82,12 @@ def clean(text):
 
 def esc(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def stable_id(title, label=""):
+    """제목 기반 고정 ID (실행마다 값이 바뀌지 않음)"""
+    key = re.sub(r"\s+", "", label + title)
+    return "t" + hashlib.md5(key.encode("utf-8")).hexdigest()[:12]
 
 
 def abs_url(base, href):
@@ -207,7 +214,7 @@ def parse_generic(board):
             continue
         href, title = best
         m = ID_IN_HREF_RE.search(html.unescape(href))
-        nid = m.group(1) if m else str(abs(hash(title)) % 10**12)
+        nid = m.group(1) if m else stable_id(title, board.get("label", ""))
         if nid in used:
             continue
         used.add(nid)
@@ -256,19 +263,23 @@ def main():
             continue
         fresh = []
         for it in items:
-            if it["id"] in seen:
+            tkey = stable_id(it["title"], key)
+            if it["id"] in seen or tkey in seen:
                 continue
             if any(x in it["title"] for x in exclude):
                 seen.add(it["id"])
+                seen.add(tkey)
                 continue
             if it["date"]:
                 try:
                     d = datetime.strptime(it["date"], "%Y-%m-%d").date()
                     if (today - d).days > max_age:
                         seen.add(it["id"])
+                        seen.add(tkey)
                         continue
                 except ValueError:
                     pass
+            it["_tkey"] = tkey
             fresh.append(it)
         if first_run:
             fresh = fresh[:first_run_limit]
@@ -279,10 +290,13 @@ def main():
                     f'<a href="{it["url"]}">{esc(it["title"])}</a>\n'
                     f'   <i>{esc(date)}</i>')
             seen.add(it["id"])
+            seen.add(it.get("_tkey", ""))
         # 목록에 남은 글은 전부 확인 처리 (오래된 글 재발송 방지)
         for it in items:
             seen.add(it["id"])
-        state[key] = list(seen)[-500:]
+            seen.add(stable_id(it["title"], key))
+        seen.discard("")
+        state[key] = list(seen)[-1000:]
 
     save_json(STATE_PATH, state)
 
