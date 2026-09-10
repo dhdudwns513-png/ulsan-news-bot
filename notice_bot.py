@@ -13,6 +13,8 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import requests
+import ssl
+from urllib3.util.ssl_ import create_urllib3_context
 
 KST = timezone(timedelta(hours=9))
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -21,6 +23,31 @@ STATE_PATH = os.path.join(BASE, "notice_state.json")
 
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+class LegacyTLSAdapter(requests.adapters.HTTPAdapter):
+    """구형 정부 서버(TLS1.0/약한 암호군)에 접속하기 위한 어댑터"""
+
+    def init_poolmanager(self, *a, **kw):
+        ctx = create_urllib3_context(ciphers="DEFAULT@SECLEVEL=1")
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
+        for opt in ("OP_NO_SSLv2", "OP_NO_SSLv3"):
+            ctx.options |= getattr(ssl, opt, 0)
+        if hasattr(ctx, "minimum_version"):
+            try:
+                ctx.minimum_version = ssl.TLSVersion.TLSv1
+            except Exception:
+                pass
+        kw["ssl_context"] = ctx
+        return super().init_poolmanager(*a, **kw)
+
+
+def make_session():
+    s = requests.Session()
+    s.mount("https://", LegacyTLSAdapter())
+    return s
+
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
@@ -78,16 +105,24 @@ def pick_title(row):
 
 
 def fetch_html(url, tries=3):
+    """구형 TLS 서버 대응 + http 폴백"""
+    import warnings
+    warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+    candidates = [url]
+    if url.startswith("https://"):
+        candidates.append("http://" + url[len("https://"):])
     last = None
     for i in range(tries):
-        try:
-            r = requests.get(url, headers=UA, timeout=30)
-            r.raise_for_status()
-            r.encoding = r.apparent_encoding or "utf-8"
-            return r.text
-        except Exception as e:
-            last = e
-            time.sleep(3 * (i + 1))
+        for u in candidates:
+            for sess in (make_session(), requests):
+                try:
+                    r = sess.get(u, headers=UA, timeout=30, verify=False)
+                    r.raise_for_status()
+                    r.encoding = r.apparent_encoding or "utf-8"
+                    return r.text
+                except Exception as e:
+                    last = e
+        time.sleep(3 * (i + 1))
     print(f"[board] {url}: {last}", file=sys.stderr)
     return None
 
