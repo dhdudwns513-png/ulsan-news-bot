@@ -20,6 +20,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +43,7 @@ jobs:
           fi
 
       - name: 뉴스봇 실행
+        timeout-minutes: 6
         env:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
@@ -50,16 +52,24 @@ jobs:
         run: python news_bot.py ${{ steps.mode.outputs.mode }}
 
       - name: 게시판 알림 실행
+        timeout-minutes: 6
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python notice_bot.py
 
       - name: 발송 기록 저장
+        continue-on-error: true
         run: |
           git config user.name "news-bot"
           git config user.email "bot@users.noreply.github.com"
           git add state.json notice_state.json
-          git diff --cached --quiet || git commit -m "update state [skip ci]"
-          git pull --rebase || true
-          git push
+          git diff --cached --quiet && exit 0
+          git commit -m "update state [skip ci]"
+          for i in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main && git push && exit 0
+            git rebase --abort || true
+            sleep 5
+          done
+          echo "push 실패 — 다음 실행에서 재시도"
