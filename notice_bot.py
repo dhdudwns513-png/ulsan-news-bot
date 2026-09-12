@@ -35,11 +35,10 @@ class LegacyTLSAdapter(requests.adapters.HTTPAdapter):
         ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
         for opt in ("OP_NO_SSLv2", "OP_NO_SSLv3"):
             ctx.options |= getattr(ssl, opt, 0)
-        if hasattr(ctx, "minimum_version"):
-            try:
-                ctx.minimum_version = ssl.TLSVersion.TLSv1
-            except Exception:
-                pass
+        try:
+            ctx.minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
+        except Exception:
+            pass
         kw["ssl_context"] = ctx
         return super().init_poolmanager(*a, **kw)
 
@@ -111,25 +110,32 @@ def pick_title(row):
     return best
 
 
-def fetch_html(url, tries=3):
-    """구형 TLS 서버 대응 + http 폴백"""
+def fetch_html(url, tries=2):
+    """구형 TLS 서버 대응 + http 폴백. 게시판당 최대 약 40초로 제한."""
     import warnings
     warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-    candidates = [url]
+    started = time.time()
+    budget = 40  # 초
+
+    attempts = [(make_session(), url)]
     if url.startswith("https://"):
-        candidates.append("http://" + url[len("https://"):])
+        attempts.append((make_session(), "http://" + url[len("https://"):]))
+    attempts.append((requests, url))
+
     last = None
     for i in range(tries):
-        for u in candidates:
-            for sess in (make_session(), requests):
-                try:
-                    r = sess.get(u, headers=UA, timeout=30, verify=False)
-                    r.raise_for_status()
-                    r.encoding = r.apparent_encoding or "utf-8"
-                    return r.text
-                except Exception as e:
-                    last = e
-        time.sleep(3 * (i + 1))
+        for sess, u in attempts:
+            if time.time() - started > budget:
+                print(f"[board] {url}: 시간 초과({budget}초) — 이번 회차 건너뜀", file=sys.stderr)
+                return None
+            try:
+                r = sess.get(u, headers=UA, timeout=12, verify=False)
+                r.raise_for_status()
+                r.encoding = r.apparent_encoding or "utf-8"
+                return r.text
+            except Exception as e:
+                last = e
+        time.sleep(2)
     print(f"[board] {url}: {last}", file=sys.stderr)
     return None
 
