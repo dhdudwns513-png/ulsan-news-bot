@@ -379,7 +379,8 @@ def run_briefing(cfg, state):
         title_only = cfg.get("digest_title_only", True)
         arts = [a for a in fetch_keyword(kw, since, cfg, sent, title_only=title_only)
                 if not is_market(a, cfg)]
-        groups = cluster(arts)[:cfg.get("digest_top", 10)]
+        top = cfg.get("digest_top_by_keyword", {}).get(kw, cfg.get("digest_top", 10))
+        groups = cluster(arts)[:top]
         if not groups:
             continue
         lines.append(f"<b>▎{esc(kw)} 주요 뉴스 TOP {len(groups)}</b> <i>(보도량 순)</i>")

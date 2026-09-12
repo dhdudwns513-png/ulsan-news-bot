@@ -240,13 +240,30 @@ def tg_send(text):
     time.sleep(0.4)
 
 
+def tg_send_long(text):
+    """4096자 제한에 맞춰 줄 단위로 나눠 발송"""
+    chunks, cur = [], ""
+    for line in text.split("\n"):
+        if len(cur) + len(line) + 1 > 3800:
+            chunks.append(cur)
+            cur = ""
+        cur += line + "\n"
+    if cur.strip():
+        chunks.append(cur)
+    for c in chunks:
+        tg_send(c)
+
+
 def main():
     cfg = load_json(BOARDS_PATH, {})
     state = load_json(STATE_PATH, {})
     today = datetime.now(KST).date()
     max_age = cfg.get("max_age_days", 3)
     first_run_limit = cfg.get("first_run_limit", 3)
+    max_per_board = cfg.get("max_per_board", 10)
     exclude = cfg.get("exclude", [])
+
+    collected = []  # [(label, [item,...])]
 
     for b in cfg.get("boards", []):
         key = b["name"]
@@ -261,6 +278,7 @@ def main():
             items = parse_board(b["url"])
         if not items:
             continue
+
         fresh = []
         for it in items:
             tkey = stable_id(it["title"], key)
@@ -281,22 +299,39 @@ def main():
                     pass
             it["_tkey"] = tkey
             fresh.append(it)
+
         if first_run:
             fresh = fresh[:first_run_limit]
+        fresh = fresh[:max_per_board]
         fresh.reverse()  # 오래된 것부터
+
+        if fresh:
+            collected.append((b["label"], fresh))
+
+        # 보낸 글 + 목록에 있던 글 전부 확인 처리 (중복 방지)
         for it in fresh:
-            date = it["date"] or today.strftime("%Y-%m-%d")
-            tg_send(f'📋 <b>[{esc(b["label"])}]</b>\n'
-                    f'<a href="{it["url"]}">{esc(it["title"])}</a>\n'
-                    f'   <i>{esc(date)}</i>')
             seen.add(it["id"])
             seen.add(it.get("_tkey", ""))
-        # 목록에 남은 글은 전부 확인 처리 (오래된 글 재발송 방지)
         for it in items:
             seen.add(it["id"])
             seen.add(stable_id(it["title"], key))
         seen.discard("")
         state[key] = list(seen)[-1000:]
+
+    # 기관·게시판별로 한 건의 메시지로 묶어 발송
+    if collected:
+        now = datetime.now(KST).strftime("%m/%d %H:%M")
+        total = sum(len(v) for _, v in collected)
+        lines = [f"📋 <b>기관 공지·고시 알림</b>  {now}",
+                 f"<i>신규 {total}건</i>", ""]
+        for label, items in collected:
+            lines.append(f"<b>▎{esc(label)}</b>")
+            for it in items:
+                date = it["date"] or today.strftime("%Y-%m-%d")
+                lines.append(f'• <a href="{it["url"]}">{esc(it["title"])}</a>')
+                lines.append(f'   <i>{esc(date)}</i>')
+            lines.append("")
+        tg_send_long("\n".join(lines))
 
     save_json(STATE_PATH, state)
 
