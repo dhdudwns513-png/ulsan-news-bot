@@ -18,6 +18,7 @@ import ssl
 from urllib3.util.ssl_ import create_urllib3_context
 
 KST = timezone(timedelta(hours=9))
+DEADLINE = [None]  # 전체 실행 마감 시각(초)
 BASE = os.path.dirname(os.path.abspath(__file__))
 BOARDS_PATH = os.path.join(BASE, "boards.json")
 STATE_PATH = os.path.join(BASE, "notice_state.json")
@@ -110,12 +111,11 @@ def pick_title(row):
     return best
 
 
-def fetch_html(url, tries=2):
-    """구형 TLS 서버 대응 + http 폴백. 게시판당 최대 약 40초로 제한."""
+def fetch_html(url, tries=1, budget=15):
+    """구형 TLS 서버 대응 + http 폴백. 게시판당 시간 예산 제한."""
     import warnings
     warnings.filterwarnings("ignore", message="Unverified HTTPS request")
     started = time.time()
-    budget = 40  # 초
 
     attempts = [(make_session(), url)]
     if url.startswith("https://"):
@@ -126,10 +126,13 @@ def fetch_html(url, tries=2):
     for i in range(tries):
         for sess, u in attempts:
             if time.time() - started > budget:
-                print(f"[board] {url}: 시간 초과({budget}초) — 이번 회차 건너뜀", file=sys.stderr)
+                print(f"[board] {url}: 시간 초과 — 이번 회차 건너뜀", file=sys.stderr)
+                return None
+            if DEADLINE[0] and time.time() > DEADLINE[0]:
+                print(f"[board] {url}: 전체 시간 마감 — 다음 실행에서 확인", file=sys.stderr)
                 return None
             try:
-                r = sess.get(u, headers=UA, timeout=12, verify=False)
+                r = sess.get(u, headers=UA, timeout=8, verify=False)
                 r.raise_for_status()
                 r.encoding = r.apparent_encoding or "utf-8"
                 return r.text
@@ -333,10 +336,20 @@ def main():
     first_run_limit = cfg.get("first_run_limit", 3)
     max_per_board = cfg.get("max_per_board", 10)
     exclude = cfg.get("exclude", [])
+    DEADLINE[0] = time.time() + cfg.get("total_budget_sec", 210)
+
+    # 매 실행마다 시작 게시판을 한 칸씩 밀어 모든 게시판이 돌아가며 확인되도록
+    all_boards = cfg.get("boards", [])
+    start = state.get("_rotate", 0) % max(len(all_boards), 1)
+    ordered = all_boards[start:] + all_boards[:start]
+    state["_rotate"] = start + cfg.get("rotate_step", 5)
 
     collected = []  # [(label, [item,...])]
 
-    for b in cfg.get("boards", []):
+    for b in ordered:
+        if time.time() > DEADLINE[0]:
+            print("[board] 전체 시간 마감 — 나머지 게시판은 다음 실행", file=sys.stderr)
+            break
         key = b["name"]
         seen = set(state.get(key, []))
         first_run = not seen

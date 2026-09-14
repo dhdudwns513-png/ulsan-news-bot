@@ -107,10 +107,36 @@
         "기간제",
         "공무직"
       ]
+    },
+    {
+      "name": "umca_job",
+      "label": "울산도시공사 채용",
+      "type": "generic",
+      "url": "https://www.umca.co.kr/umca/contents.do?mId=001001002000000000"
+    },
+    {
+      "name": "uic_job_full",
+      "label": "울산시설공단 정규직 채용",
+      "type": "generic",
+      "url": "https://www.uic.or.kr/notify/noti06.do"
+    },
+    {
+      "name": "uic_job_temp",
+      "label": "울산시설공단 기간제 채용",
+      "type": "generic",
+      "url": "https://www.uic.or.kr/notify/noti06_1_2.do"
+    },
+    {
+      "name": "uic_job_intern",
+      "label": "울산시설공단 청년인턴",
+      "type": "generic",
+      "url": "https://www.uic.or.kr/notify/noti06_1_3.do"
     }
   ],
   "max_age_days": 3,
   "first_run_limit": 3,
   "exclude": [],
-  "max_per_board": 10
+  "max_per_board": 6,
+  "total_budget_sec": 210,
+  "rotate_step": 5
 }
