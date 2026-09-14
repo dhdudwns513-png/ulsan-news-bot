@@ -246,6 +246,71 @@ def tg_send(text):
     time.sleep(0.4)
 
 
+NARA_ID_RE = re.compile(r"fn_apmView\(\s*'(\d+)'\s*,\s*'(\d+)'\s*\)")
+
+
+def parse_narailteo(board):
+    """나라일터 모집공고 — 여러 페이지를 읽어 지역 키워드로 필터"""
+    base = board["url"]
+    pages = board.get("pages", 5)
+    need = board.get("match_any", ["울산"])
+    items, seen_ids = [], set()
+    for p in range(1, pages + 1):
+        sep = "&" if "?" in base else "?"
+        text = fetch_html(f"{base}{sep}pageIndex={p}")
+        if text is None:
+            break
+        rows = ROW_RE.findall(text)
+        if not rows:
+            break
+        for row in rows:
+            m = NARA_ID_RE.search(row)
+            if not m:
+                continue
+            nid = m.group(2)
+            if nid in seen_ids:
+                continue
+            cells = [clean(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S | re.I)]
+            picked = pick_any_title(row)
+            if not picked:
+                continue
+            title = picked
+            org = ""
+            for c in cells:
+                if c and c != title and ("청" in c or "시" in c or "군" in c or "구" in c
+                                         or "공단" in c or "공사" in c or "재단" in c
+                                         or "원" in c or "센터" in c):
+                    if len(c) < 60 and not DATE_RE.search(c):
+                        org = c
+                        break
+            blob = title + " " + org
+            if not any(w in blob for w in need):
+                continue
+            d = DATE_RE.search(" ".join(cells))
+            date = f"{d.group(1)}-{int(d.group(2)):02d}-{int(d.group(3)):02d}" if d else ""
+            seen_ids.add(nid)
+            label_title = f"{org} · {title}" if org else title
+            items.append({"id": "n" + nid, "title": label_title,
+                          "url": board.get("detail_url", base).replace("{id}", nid),
+                          "date": date})
+    return items
+
+
+def pick_any_title(row):
+    """행에서 가장 긴 링크 텍스트를 제목으로"""
+    best = ""
+    for _, raw in ANY_A_RE.findall(row):
+        t = clean(raw)
+        if len(t) > len(best):
+            best = t
+    if not best:
+        for raw in EMW_A_RE.findall(row):
+            t = clean(raw)
+            if len(t) > len(best):
+                best = t
+    return best if len(best) >= 5 else ""
+
+
 def tg_send_long(text):
     """4096자 제한에 맞춰 줄 단위로 나눠 발송"""
     chunks, cur = [], ""
@@ -278,6 +343,8 @@ def main():
         btype = b.get("type", "cop")
         if btype == "eminwon":
             items = parse_eminwon(b)
+        elif btype == "narailteo":
+            items = parse_narailteo(b)
         elif btype == "generic":
             items = parse_generic(b)
         else:

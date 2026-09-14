@@ -57,6 +57,56 @@
         "기간제",
         "공무직"
       ]
+    },
+    {
+      "name": "donggu_job",
+      "label": "동구청 채용공고",
+      "type": "cop",
+      "url": "https://donggu.ulsan.kr/cop/bbs/selectBoardList.do?bbsId=BBSMSTR_000000000323",
+      "include_only": [
+        "채용",
+        "모집",
+        "구인",
+        "임용",
+        "선발",
+        "공개경쟁",
+        "기간제",
+        "공무직"
+      ]
+    },
+    {
+      "name": "donggu_gosi_job",
+      "label": "동구청 채용공고(고시)",
+      "type": "eminwon",
+      "url": "https://eminwon.donggu.ulsan.kr/emwp/jsp/ofr/OfrNotAncmtLSub.jsp?not_ancmt_se_code=01,03,04,05&list_gubun=A",
+      "detail_url": "https://eminwon.donggu.ulsan.kr/emwp/gov/mogaha/ntis/web/ofr/action/OfrAction.do?jndinm=OfrNotAncmtEJB&context=NTIS&method=selectOfrNotAncmt&methodnm=selectOfrNotAncmtRegst&not_ancmt_mgt_no={id}&homepage_pbs_yn=Y&subCheck=Y&ofr_pageSize=10",
+      "include_only": [
+        "채용",
+        "모집",
+        "구인",
+        "임용",
+        "선발",
+        "공개경쟁",
+        "기간제",
+        "공무직"
+      ]
+    },
+    {
+      "name": "bukgu_gosi_job",
+      "label": "북구청 채용공고(고시)",
+      "type": "eminwon",
+      "url": "https://eminwon.bukgu.ulsan.kr/emwp/jsp/ofr/OfrNotAncmtLSub.jsp?not_ancmt_se_code=01,03,04&list_gubun=A",
+      "detail_url": "https://eminwon.bukgu.ulsan.kr/emwp/gov/mogaha/ntis/web/ofr/action/OfrAction.do?jndinm=OfrNotAncmtEJB&context=NTIS&method=selectOfrNotAncmt&methodnm=selectOfrNotAncmtRegst&not_ancmt_mgt_no={id}&homepage_pbs_yn=Y&subCheck=Y&ofr_pageSize=10",
+      "include_only": [
+        "채용",
+        "모집",
+        "구인",
+        "임용",
+        "선발",
+        "공개경쟁",
+        "기간제",
+        "공무직"
+      ]
     }
   ],
   "max_age_days": 3,
