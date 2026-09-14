@@ -290,6 +290,11 @@ def main():
             tkey = stable_id(it["title"], key)
             if it["id"] in seen or tkey in seen:
                 continue
+            need = b.get("include_only", [])
+            if need and not any(w in it["title"] for w in need):
+                seen.add(it["id"])
+                seen.add(tkey)
+                continue
             if any(x in it["title"] for x in exclude):
                 seen.add(it["id"])
                 seen.add(tkey)

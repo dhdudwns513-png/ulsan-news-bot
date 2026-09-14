@@ -1,5 +1,5 @@
 {
-  "_설명": "boards: 감시할 게시판 (type 생략=표준게시판, 'eminwon'=새올 고시공고, 'generic'=범용 표 목록) / max_age_days / first_run_limit / exclude",
+  "_설명": "boards: 감시 게시판 (type 생략=표준게시판, eminwon=새올, generic=범용 표) / include_only: 제목에 이 단어가 있을 때만 발송 / max_age_days / first_run_limit / max_per_board / exclude",
   "boards": [
     {
       "name": "donggu_notice",
@@ -35,6 +35,28 @@
       "label": "울산시 고시공고",
       "type": "generic",
       "url": "https://www.ulsan.go.kr/u/rep/contents.ulsan?mId=001004002000000000"
+    },
+    {
+      "name": "bukgu_job",
+      "label": "북구청 채용공고",
+      "type": "generic",
+      "url": "https://www.bukgu.ulsan.kr/lay1/S1T92C460/contents.do"
+    },
+    {
+      "name": "ulsan_job",
+      "label": "울산시 채용공고",
+      "type": "generic",
+      "url": "https://www.ulsan.go.kr/u/rep/contents.ulsan?mId=001004002000000000",
+      "include_only": [
+        "채용",
+        "모집",
+        "구인",
+        "임용",
+        "선발",
+        "공개경쟁",
+        "기간제",
+        "공무직"
+      ]
     }
   ],
   "max_age_days": 3,
