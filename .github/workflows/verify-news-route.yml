@@ -1,0 +1,46 @@
+name: Verify test news bot route
+on:
+  push:
+    branches: [fix/delivery-error-reporting]
+    paths:
+      - '.github/workflows/verify-news-route.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify configured bot and channel without sending messages
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          token = os.environ.get('TELEGRAM_BOT_TOKEN')
+          chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+          if not token or not chat_id:
+              raise SystemExit('ROUTE_CONFIG_MISSING')
+          def call(method, payload):
+              request = urllib.request.Request(
+                  'https://api.telegram.org/bot' + token + '/' + method,
+                  data=json.dumps(payload).encode(),
+                  headers={'Content-Type': 'application/json'})
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      data = json.load(response)
+              except Exception:
+                  raise SystemExit('ROUTE_API_ERROR_' + method) from None
+              if not data.get('ok'):
+                  raise SystemExit('ROUTE_API_REJECTED_' + method)
+              return data['result']
+          bot = call('getMe', {})
+          chat = call('getChat', {'chat_id': chat_id})
+          username = bot.get('username', '')
+          print('CONFIGURED_BOT_USERNAME=' + username)
+          print('TEST_BOT_MATCH=' + str(username.lower() == 'kimtaeseon_news_test_0914_bot'))
+          print('TEST_CHANNEL_TITLE_MATCH=' + str(chat.get('title') == '김태선 뉴스봇 테스트'))
+          print('CHAT_TYPE=' + chat.get('type', 'unknown'))
+          print('READ_ONLY_ROUTE_CHECK_COMPLETE')
+          PY
