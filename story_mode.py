@@ -63,9 +63,17 @@ def link(url, label):
 
 def card(story):
     articles = sorted(story["articles"], key=lambda a: a["pub"], reverse=True)
+    previous = story.get('displayed_count', len(articles) if story.get('message_id') else 0)
+    additions = story['articles'][previous:]
     lines = [f'<b>{esc(story["title"][:120])}</b>',
              f'관련 기사 {len(articles)}건 · 갱신 {story["updated"][5:16].replace("T", " ")}',
-             '', '<b>최근 보도 제목</b>']
+             '']
+    if previous and additions:
+        lines += [f'<b>이번에 추가된 보도 · {len(additions)}건</b>']
+        for a in sorted(additions, key=lambda a: a['pub'], reverse=True)[:2]:
+            lines.append('• ' + esc(a['title'][:140]))
+        lines += ['※ 새 기사 제목 기준 · 새로운 사실인지는 원문 확인', '']
+    lines.append('<b>최근 보도 제목</b>')
     seen = set()
     for a in articles:
         key = ''.join(sorted(words(a["title"])))
@@ -167,6 +175,7 @@ def ingest(state, articles, now, cfg):
             s = stories[sid] = {'id': sid, 'title': a['title'], 'articles': [],
                                'message_id': None, 'notified': [], 'priority': 0,
                                'dirty': True, 'briefed': 0}
+        s.setdefault('displayed_count', len(s['articles']) if s.get('message_id') else 0)
         s['articles'].append(a)
         s['priority'] = max(s['priority'], a.get('priority', 0))
         s['updated'] = now.isoformat()
@@ -198,6 +207,7 @@ def deliver(state, mode, now, cfg, client, save, quiet=False):
         if first or not client.edit(s['message_id'], text):
             s['message_id'] = client.send(text, silent=(mode == 'briefing' or s['priority'] < 3))
             new_count += 1
+        s['displayed_count'] = len(s['articles'])
         s['dirty'] = False
         s['url'] = message_link(route, s['message_id'])
         # Checkpoint each successful card; retries edit instead of reposting.

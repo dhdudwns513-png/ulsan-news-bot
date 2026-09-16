@@ -51,6 +51,8 @@ class StoriesTests(unittest.TestCase):
         self.assertEqual(len(self.client.sends), 1)
         self.assertEqual(len(self.client.edits), 1)
         self.assertIn('관련 기사 2건', self.client.edits[0][1])
+        self.assertIn('이번에 추가된 보도 · 1건', self.client.edits[0][1])
+        self.assertEqual(next(iter(self.state['stories'].values()))['displayed_count'], 2)
     def test_same_company_different_event_does_not_merge(self):
         self.ingest(article(), article('HD현대중공업 신규 공장 투자 발표', 'https://example.com/2'))
         self.assertEqual(len(self.state['stories']), 2)

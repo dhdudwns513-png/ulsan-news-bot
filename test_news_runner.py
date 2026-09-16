@@ -10,6 +10,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 import news_bot as bot
 import story_mode
+import comparison
 
 EXPECTED_BOT = 'kimtaeseon_news_test_0914_bot'
 EXPECTED_CHAT_TITLE = '김태선 뉴스봇 테스트'
@@ -100,7 +101,22 @@ def main():
         loaded['edit_smoke_verified'] = True
         state.save(loaded)
         print('LIVE_MESSAGE_EDIT_VERIFIED message_id=' + str(message_id))
-    story_mode.run(bot, cfg, loaded, mode)
+    counts = {'test_send_success': 0, 'test_edit_success': 0}
+    original_call = story_mode.Telegram.call
+    def counted_call(self, method, **payload):
+        result = original_call(self, method, **payload)
+        if method == 'sendMessage' and result:
+            counts['test_send_success'] += 1
+        elif method == 'editMessageText' and result:
+            counts['test_edit_success'] += 1
+        return result
+    story_mode.Telegram.call = counted_call
+    try:
+        result = story_mode.run(bot, cfg, loaded, mode)
+    finally:
+        story_mode.Telegram.call = original_call
+    comparison.collect(result, repository, state.headers, mode, counts)
+    state.save(result)
     print('TEST_NEWS_RUN_COMPLETE mode=' + mode)
 
 
