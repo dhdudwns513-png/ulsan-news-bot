@@ -1,0 +1,55 @@
+name: Kim Taeseon test news
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        description: Run mode
+        default: briefing
+        options: [check, briefing]
+  push:
+    branches: [main]
+    paths: ['.github/workflows/test-news.yml']
+  schedule:
+    - cron: '17,37,57 * * * *'
+    - cron: '0 23 * * *'
+    - cron: '30 9 * * *'
+permissions:
+  contents: write
+concurrency:
+  group: kimtaeseon-test-news
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c4c5d263631901d490771a44a33405917dc86a29
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt cryptography
+      - name: Run offline verification
+        run: python -m unittest -q test_delivery.py test_stories.py test_runner_checks.py
+      - name: Run isolated test news
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TEST_TELEGRAM_CHAT_ID }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          STATE_GITHUB_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ inputs.mode }}
+        run: |
+          mode=check
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            mode="$INPUT_MODE"
+          elif [ "$EVENT_NAME" = push ] || [ "$EVENT_SCHEDULE" = '0 23 * * *' ] || [ "$EVENT_SCHEDULE" = '30 9 * * *' ]; then
+            mode=briefing
+          fi
+          python test_news_runner.py "$mode"
