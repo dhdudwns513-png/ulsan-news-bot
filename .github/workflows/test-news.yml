@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c4c5d263631901d490771a44a33405917dc86a29
+          ref: 4a493877a8fb828eb2cee58225f32a0ff40f3729
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt cryptography
       - name: Run offline verification
-        run: python -m unittest -q test_delivery.py test_stories.py test_runner_checks.py
+        run: python -m unittest -q test_delivery.py test_stories.py test_runner_checks.py test_comparison.py
       - name: Run isolated test news
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
