@@ -38,8 +38,9 @@ def load_json(path, default):
 
 
 def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(path + ".tmp", path)
 
 
 def clean(text):
@@ -170,7 +171,7 @@ def google_news_search(query):
 
 def naver_search(query, display=50):
     if not (NAVER_ID and NAVER_SECRET):
-        return []
+        raise RuntimeError("[naver] 검색 인증 설정 누락")
     try:
         r = requests.get(
             "https://naverapihub.apigw.ntruss.com/search/v1/news",
@@ -179,9 +180,8 @@ def naver_search(query, display=50):
             timeout=15,
         )
         r.raise_for_status()
-    except Exception as e:
-        print(f"[naver] {query}: {e}", file=sys.stderr)
-        return []
+    except requests.RequestException:
+        raise RuntimeError(f"[naver] 검색 실패: {query}") from None
     out = []
     for it in r.json().get("items", []):
         try:
@@ -225,8 +225,7 @@ def fetch_keyword(kw, since, cfg, sent, title_only=False):
 # ---------- 텔레그램 ----------
 def tg_send(text):
     if not (TG_TOKEN and TG_CHAT):
-        print("[tg] 토큰/채팅ID 없음 — 출력만 합니다\n" + text)
-        return
+        raise RuntimeError("[tg] 토큰/채팅ID 없음 — 발송 기록을 저장하지 않습니다")
     chunks, cur = [], ""
     for line in text.split("\n"):
         if len(cur) + len(line) + 1 > 3900:
@@ -236,15 +235,20 @@ def tg_send(text):
     if cur.strip():
         chunks.append(cur)
     for c in chunks:
-        r = requests.post(
-            f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-            json={"chat_id": TG_CHAT, "text": c, "parse_mode": "HTML",
-                  "disable_web_page_preview": True},
-            timeout=15,
-        )
-        if r.status_code != 200:
-            print(f"[tg] {r.status_code} {r.text}", file=sys.stderr)
+        try:
+            r = requests.post(
+                f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+                json={"chat_id": TG_CHAT, "text": c, "parse_mode": "HTML",
+                      "disable_web_page_preview": True},
+                timeout=15,
+            )
+            ok = r.status_code == 200 and r.json().get("ok") is True
+        except (requests.RequestException, ValueError):
+            raise RuntimeError("[tg] 전송 응답 확인 실패 — 발송 기록 미저장") from None
+        if not ok:
+            raise RuntimeError(f"[tg] 전송 거절 HTTP {r.status_code} — 발송 기록 미저장")
         time.sleep(0.5)
+    print(f"[tg] 전송 성공: {len(chunks)}개 메시지")
 
 
 def fmt_group(g):
@@ -400,9 +404,16 @@ def run_briefing(cfg, state):
 
 def main():
     mode = (sys.argv[1] if len(sys.argv) > 1 else "check").strip()
+    if mode not in ("check", "briefing"):
+        raise ValueError("mode는 check 또는 briefing이어야 합니다")
     cfg = load_json(CONFIG_PATH, {})
     state = load_json(STATE_PATH, {"sent": [], "pending": []})
-    state = run_briefing(cfg, state) if mode == "briefing" else run_check(cfg, state)
+    print(f"[news] mode={mode}, 시작={datetime.now(KST).isoformat()}")
+    if cfg.get("story_mode", False):
+        import story_mode
+        state = story_mode.run(sys.modules[__name__], cfg, state, mode)
+    else:
+        state = run_briefing(cfg, state) if mode == "briefing" else run_check(cfg, state)
     save_json(STATE_PATH, state)
 
 
