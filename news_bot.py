@@ -38,8 +38,9 @@ def load_json(path, default):
 
 
 def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(path + ".tmp", path)
 
 
 def clean(text):
@@ -408,7 +409,11 @@ def main():
     cfg = load_json(CONFIG_PATH, {})
     state = load_json(STATE_PATH, {"sent": [], "pending": []})
     print(f"[news] mode={mode}, 시작={datetime.now(KST).isoformat()}")
-    state = run_briefing(cfg, state) if mode == "briefing" else run_check(cfg, state)
+    if cfg.get("story_mode", False):
+        import story_mode
+        state = story_mode.run(sys.modules[__name__], cfg, state, mode)
+    else:
+        state = run_briefing(cfg, state) if mode == "briefing" else run_check(cfg, state)
     save_json(STATE_PATH, state)
 
 
