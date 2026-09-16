@@ -1,0 +1,53 @@
+name: Test news bot setup
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-news-setup.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check test bot connection without sending messages
+        env:
+          TEST_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
+          TEST_CHAT: ${{ secrets.TEST_TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request
+          token = os.environ.get('TEST_TOKEN', '')
+          if not token:
+              print('SETUP_PENDING: TEST_TELEGRAM_BOT_TOKEN')
+              raise SystemExit(0)
+          def call(method, payload):
+              req = urllib.request.Request(
+                  'https://api.telegram.org/bot' + token + '/' + method,
+                  data=json.dumps(payload).encode(),
+                  headers={'Content-Type': 'application/json'})
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as r:
+                      data = json.load(r)
+              except Exception:
+                  raise SystemExit('TEST_API_ERROR_' + method) from None
+              if not data.get('ok'):
+                  raise SystemExit('TEST_API_REJECTED_' + method)
+              return data['result']
+          bot = call('getMe', {})
+          if bot.get('username', '').lower() != 'kimtaeseon_news_test_0914_bot':
+              raise SystemExit('WRONG_BOT: expected kimtaeseon_news_test_0914_bot')
+          print('TEST_BOT_VERIFIED')
+          webhook = call('getWebhookInfo', {})
+          print('WEBHOOK_CONFIGURED=' + str(bool(webhook.get('url'))))
+          chat_id = os.environ.get('TEST_CHAT', '')
+          if chat_id:
+              chat = call('getChat', {'chat_id': chat_id})
+              if chat.get('type') != 'channel' or chat.get('title') != '김태선 뉴스봇 테스트':
+                  raise SystemExit('TEST_CHANNEL_MISMATCH')
+              print('TEST_CHANNEL_VERIFIED')
+          else:
+              print('SETUP_PENDING: TEST_TELEGRAM_CHAT_ID')
+          print('NO_MESSAGES_SENT')
+          PY
