@@ -236,16 +236,19 @@ def parse_generic(board):
 
 def tg_send(text):
     if not (TG_TOKEN and TG_CHAT):
-        print("[tg] 토큰/채팅ID 없음 — 출력만 합니다\n" + text)
-        return
-    r = requests.post(
-        f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-        json={"chat_id": TG_CHAT, "text": text, "parse_mode": "HTML",
-              "disable_web_page_preview": True},
-        timeout=15,
-    )
-    if r.status_code != 200:
-        print(f"[tg] {r.status_code} {r.text}", file=sys.stderr)
+        raise RuntimeError("[tg] 토큰/채팅ID 없음 — 발송 기록 미저장")
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+            json={"chat_id": TG_CHAT, "text": text, "parse_mode": "HTML",
+                  "disable_web_page_preview": True},
+            timeout=15,
+        )
+        ok = r.status_code == 200 and r.json().get("ok") is True
+    except (requests.RequestException, ValueError):
+        raise RuntimeError("[tg] 전송 응답 확인 실패 — 발송 기록 미저장") from None
+    if not ok:
+        raise RuntimeError(f"[tg] 전송 거절 HTTP {r.status_code} — 발송 기록 미저장")
     time.sleep(0.4)
 
 

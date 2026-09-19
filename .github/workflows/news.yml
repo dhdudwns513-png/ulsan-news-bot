@@ -59,7 +59,7 @@ jobs:
         run: python notice_bot.py
 
       - name: 발송 기록 저장
-        continue-on-error: true
+        if: ${{ always() && !cancelled() }}
         run: |
           git config user.name "news-bot"
           git config user.email "bot@users.noreply.github.com"
@@ -72,4 +72,5 @@ jobs:
             git rebase --abort || true
             sleep 5
           done
-          echo "push 실패 — 다음 실행에서 재시도"
+          echo "::error::발송 기록 저장 실패 — 중복 발송 가능성 확인 필요"
+          exit 1

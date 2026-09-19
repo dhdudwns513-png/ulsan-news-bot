@@ -198,5 +198,9 @@
   "digest_top_by_keyword": {
     "울산": 10,
     "HD현대중공업": 5
-  }
+  },
+  "story_mode": true,
+  "story_window_hours": 72,
+  "story_match_threshold": 0.45,
+  "story_briefing_top": 5
 }
