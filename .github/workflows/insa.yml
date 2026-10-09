@@ -1,0 +1,54 @@
+name: 임원 인사 알림
+
+on:
+  schedule:
+    - cron: "40 23 * * 0-4"   # 평일 08:40 (한국시간)
+    - cron: "40 7 * * 1-5"    # 평일 16:40 (한국시간)
+  workflow_dispatch:
+    inputs:
+      diag:
+        description: "진단 모드(출처별 접속 결과 보내기)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: insa-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 패키지 설치
+        run: pip install requests beautifulsoup4
+
+      - name: 실행
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN || secrets.TELEGRAM_BOT_TOKEN || secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.CHAT_ID || secrets.CHANNEL_ID }}
+          INSA_CHAT_ID: ${{ secrets.INSA_CHAT_ID }}
+          DIAG: ${{ github.event.inputs.diag }}
+        run: python insa_bot.py
+
+      - name: 확인 기록 저장
+        if: always()
+        run: |
+          git config user.name "insa-bot"
+          git config user.email "insa-bot@users.noreply.github.com"
+          git add insa_seen.json || exit 0
+          git diff --cached --quiet && exit 0
+          git commit -m "임원 인사 확인 기록 갱신"
+          for i in 1 2 3; do
+            git pull --rebase -X theirs && git push && break
+            sleep 5
+          done
